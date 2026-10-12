@@ -20,7 +20,6 @@ reg signed [WIDTH-1:0] angle_signed;
 
 logic clk;
 logic reset;
-logic start;
 logic valid_out;
 
 
@@ -37,9 +36,9 @@ end
 // ----- DUT -----
 cordic_pipelined #(
   .WIDTH    (WIDTH),
-  .FXP_MUL  (FXP_SCALE)
+  .FXP_SHIFT(FXP_SHIFT)
 )
-u_cordic_rtl (
+dut (
   .clock    (clk),
   .reset    (reset),
   .ce       (!reset),
@@ -51,9 +50,43 @@ u_cordic_rtl (
 );
 
 
+// ----- Logging: compare DUT output with reference model -----
+// Output appears PIPE_LATENCY clock cycles after the angle is sampled
+localparam real MAX_ABS_ERR = 0.02;
+
+reg signed [WIDTH-1:0] angle_hist [$];
+reg signed [WIDTH-1:0] angle_exp;
+real sin_exp, cos_exp, sin_dut, cos_dut;
+int checked = 0;
+int mismatches = 0;
+
+always @ (posedge clk) begin
+  if (!reset) begin
+    angle_hist.push_back(angle_signed);
+    if (angle_hist.size() > dut.PIPE_LATENCY) begin
+      angle_exp = angle_hist.pop_front();
+      sin_exp = $sin(real'(angle_exp) / FXP_SCALE);
+      cos_exp = $cos(real'(angle_exp) / FXP_SCALE);
+      sin_dut = real'(sin_out) / FXP_SCALE;
+      cos_dut = real'(cos_out) / FXP_SCALE;
+      checked++;
+
+      if (!valid_out || (sin_dut - sin_exp) > MAX_ABS_ERR || (sin_exp - sin_dut) > MAX_ABS_ERR
+                     || (cos_dut - cos_exp) > MAX_ABS_ERR || (cos_exp - cos_dut) > MAX_ABS_ERR) begin
+        mismatches++;
+        $error("Angle: %0d | Sin: %f (exp %f) | Cos: %f (exp %f) | valid: %b",
+               angle_exp, sin_dut, sin_exp, cos_dut, cos_exp, valid_out);
+      end
+    end
+  end
+end
+
+final
+  $display("Checked %0d samples, %0d mismatches (max abs err %f)", checked, mismatches, MAX_ABS_ERR);
+
+
 initial begin
   reset = 1'b1;
-  start = 1'b0;
   angle_signed = WIDTH'(0);
   #100;
   reset = 1'b0;
@@ -64,10 +97,6 @@ initial begin
     for (angle_real = 0; angle_real < (2*PI); angle_real = angle_real + ANGLE_STEP) begin
 
       angle_signed = $signed(angle_real);
-
-      start = 1'b1;
-      #10;
-      start = 1'b0;
 
       wait(valid_out);
       #20;
