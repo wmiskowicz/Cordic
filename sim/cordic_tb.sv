@@ -35,7 +35,7 @@ end
 
 
 // ----- DUT -----
-cordic_rtl #(
+cordic #(
   .WIDTH    (WIDTH),
   .FXP_SHIFT(FXP_SHIFT)
 )

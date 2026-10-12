@@ -1,4 +1,4 @@
-module cordic_rtl#(
+module cordic #(
   parameter integer WIDTH = 16,
   parameter FXP_SHIFT = 10
 )(
